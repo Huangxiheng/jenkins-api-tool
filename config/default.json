@@ -1,0 +1,15 @@
+{
+  "jenkins": {
+    "url": "",
+    "username": "",
+    "apiToken": "",
+    "timeout": 30000
+  },
+  "server": {
+    "port": 3000
+  },
+  "logging": {
+    "level": "info",
+    "format": "combined"
+  }
+}
