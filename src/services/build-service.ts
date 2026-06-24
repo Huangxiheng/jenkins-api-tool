@@ -167,9 +167,7 @@ export class BuildService {
         const queryString = new URLSearchParams(queryParams as any).toString();
         const fullUrl = `${url}?${queryString}`;
 
-        const response = await this.httpClient.post(fullUrl, null, {
-          'Content-Length': '0',
-        });
+        const response = await this.httpClient.post(fullUrl);
         return this.extractQueueId(response);
       }
     } catch (error: any) {
