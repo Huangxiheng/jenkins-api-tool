@@ -161,6 +161,41 @@ export interface BuildStatusResult {
 }
 
 /**
+ * 下载模式
+ */
+export type DownloadSource = 'artifact' | 'workspace';
+
+/**
+ * 下载选项
+ */
+export interface DownloadOptions {
+  /** 下载源: 'artifact'(归档产物) 或 'workspace'(工作空间), 默认 'artifact' */
+  source?: DownloadSource;
+  /** workspace 基础路径 (仅当 source='workspace' 时有效), 如 'pty-pcx' */
+  workspacePath?: string;
+  /** 文件过滤模式 (支持 glob), 如 *.jar 或 *.zip */
+  pattern?: string;
+  /** 最大下载深度 (仅当 source='workspace' 时有效), 默认 10 */
+  maxDepth?: number;
+}
+
+/**
+ * Workspace 文件信息
+ */
+export interface WorkspaceFileInfo {
+  /** 文件名 */
+  name: string;
+  /** 相对路径 (相对于 workspacePath) */
+  relativePath: string;
+  /** 是否为目录 */
+  isDirectory: boolean;
+  /** 文件大小(字节), 可能为空 */
+  size?: number;
+  /** 最后修改时间戳 */
+  timestamp?: number;
+}
+
+/**
  * 下载结果
  */
 export interface DownloadResult {
@@ -172,6 +207,8 @@ export interface DownloadResult {
   size: number;
   /** 下载耗时(ms) */
   duration: number;
+  /** 下载源 */
+  source?: DownloadSource;
 }
 
 /**

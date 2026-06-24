@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
-import { JenkinsClientConfig } from '../types';
+import { JenkinsClientConfig, WorkspaceFileInfo } from '../types';
 import { Logger } from '../utils/logger';
 import { AuthenticationError, NetworkError, JenkinsError, JobNotFoundError, ArtifactNotFoundError } from '../errors';
 
@@ -115,10 +115,13 @@ export class HttpClient {
     this.logger.debug('<<< 接收响应 <<<');
     this.logger.debug(`  状态码: ${response.status} ${response.statusText}`);
     this.logger.debug(`  URL: ${response.config.baseURL || ''}${response.config.url || ''}`);
-    this.logger.debug(`  响应头: ${JSON.stringify(response.headers)}`);
+    this.logger.debug(`  响应头: ${this.safeStringify(response.headers)}`);
     // 响应体可能是对象、字符串、流等，根据 responseType 不同而不同
     const body = response.data;
-    if (typeof body === 'string') {
+    if (body && typeof body === 'object' && typeof body.pipe === 'function') {
+      // 流式响应，跳过序列化
+      this.logger.debug('  响应体: [Stream]');
+    } else if (typeof body === 'string') {
       this.logger.debug(`  响应体 (字符串, 长度: ${body.length})`);
       if (body.length <= 1000) {
         this.logger.debug(`  ${body}`);
@@ -126,8 +129,24 @@ export class HttpClient {
         this.logger.debug(`  ${body.substring(0, 500)}... (截断)`);
       }
     } else {
-      this.logger.debug(`  响应体: ${JSON.stringify(body)}`);
+      this.logger.debug(`  响应体: ${this.safeStringify(body)}`);
     }
+  }
+
+  /**
+   * 安全地将对象转换为 JSON 字符串，处理循环引用
+   */
+  private safeStringify(obj: any): string {
+    const seen = new WeakSet();
+    return JSON.stringify(obj, (key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) {
+          return '[Circular]';
+        }
+        seen.add(value);
+      }
+      return value;
+    }, 2);
   }
 
   /**
@@ -317,5 +336,66 @@ export class HttpClient {
 
     // 其他网络错误（DNS 解析失败、连接被拒绝等）
     throw new NetworkError(`Network error: ${error.message}`);
+  }
+
+  /**
+   * 获取 workspace 文件列表
+   * Jenkins workspace 浏览 API 返回 HTML 格式的文件列表，需要解析
+   * @param jobName - Job 名称（支持多级路径，如 'server/job/pex/job/pty-pcx'）
+   * @param buildNumber - 构建编号（可选，不传则访问当前 workspace）
+   * @param workspacePath - workspace 内的相对路径（可选）
+   */
+  async getWorkspaceFileList(
+    jobName: string,
+    buildNumber?: number,
+    workspacePath?: string
+  ): Promise<WorkspaceFileInfo[]> {
+    const buildSegment = buildNumber ? `/${buildNumber}` : '';
+    const url = `/job/${jobName}${buildSegment}/ws/${workspacePath || ''}`;
+    this.logger.debug(`Fetching workspace file list: ${url}`);
+
+    // 获取 HTML 格式的文件列表
+    const html = await this.axiosInstance.get(url, {
+      headers: { 'Accept': 'text/html' },
+      responseType: 'text',
+    });
+
+    return this.parseWorkspaceHtml(html.data, workspacePath || '');
+  }
+
+  /**
+   * 解析 Jenkins workspace HTML 文件列表
+   * Jenkins 返回的 HTML 格式为：
+   * <tr><td><a href="...">文件名</a></td><td>大小</td><td>日期</td></tr>
+   */
+  private parseWorkspaceHtml(html: string, basePath: string): WorkspaceFileInfo[] {
+    const files: WorkspaceFileInfo[] = [];
+    
+    // 匹配 <a href="...">文件名</a> 标签
+    // Jenkins workspace HTML 中，文件链接格式为: <a href="filename/"> 或 <a href="filename">
+    const linkRegex = /<a href="([^"]+)">([^<]+)<\/a>/g;
+    let match;
+
+    while ((match = linkRegex.exec(html)) !== null) {
+      const href = match[1];
+      const name = match[2];
+
+      // 跳过父目录链接 (..)
+      if (name === '..' || name === 'Parent Directory') {
+        continue;
+      }
+
+      // 判断是否为目录（href 以 / 结尾）
+      const isDirectory = href.endsWith('/');
+      const relativePath = basePath ? `${basePath}/${name}` : name;
+
+      files.push({
+        name,
+        relativePath,
+        isDirectory,
+      });
+    }
+
+    return files;
   }
 }

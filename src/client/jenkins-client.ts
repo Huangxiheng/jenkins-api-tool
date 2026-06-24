@@ -1,4 +1,4 @@
-import { JenkinsClientConfig, BuildParameters, BuildOptions, BuildTriggerResult, BuildCompleteResult, BuildStatusResult, DownloadResult, DownloadAllResult } from '../types';
+import { JenkinsClientConfig, BuildParameters, BuildOptions, BuildTriggerResult, BuildCompleteResult, BuildStatusResult, DownloadResult, DownloadAllResult, DownloadOptions } from '../types';
 import { Logger } from '../utils/logger';
 import { HttpClient } from '../services/http-client';
 import { BuildService } from '../services/build-service';
@@ -79,26 +79,55 @@ export class JenkinsClient {
   }
 
   /**
-   * 下载单个产物
+   * 下载单个产物/文件
+   * @param jobName - Job 名称
+   * @param buildNumber - 构建编号（可选，不传则使用当前 workspace）
+   * @param filePath - 文件路径（artifact 相对路径或 workspace 相对路径）
+   * @param outputDir - 本地输出目录
+   * @param options - 下载选项（可选）
    */
   async download(
     jobName: string,
-    buildNumber: number,
-    artifactPath: string,
-    outputDir: string
+    buildNumber: number | undefined,
+    filePath: string,
+    outputDir: string,
+    options?: DownloadOptions
   ): Promise<DownloadResult> {
-    return await this.downloadService.downloadArtifact(jobName, buildNumber, artifactPath, outputDir);
+    const source = options?.source || 'artifact';
+
+    if (source === 'workspace') {
+      return await this.downloadService.downloadFromWorkspace(jobName, buildNumber, filePath, outputDir);
+    } else {
+      if (buildNumber === undefined) {
+        throw new Error('buildNumber is required for artifact downloads');
+      }
+      return await this.downloadService.downloadArtifact(jobName, buildNumber, filePath, outputDir);
+    }
   }
 
   /**
-   * 下载所有产物
+   * 下载所有产物/文件
+   * @param jobName - Job 名称
+   * @param buildNumber - 构建编号（可选，不传则使用当前 workspace）
+   * @param outputDir - 本地输出目录
+   * @param options - 下载选项（可选）
    */
   async downloadAll(
     jobName: string,
-    buildNumber: number,
-    outputDir: string
+    buildNumber: number | undefined,
+    outputDir: string,
+    options?: DownloadOptions
   ): Promise<DownloadAllResult> {
-    return await this.downloadService.downloadAllArtifacts(jobName, buildNumber, outputDir);
+    const source = options?.source || 'artifact';
+
+    if (source === 'workspace') {
+      return await this.downloadService.downloadAllFromWorkspace(jobName, buildNumber, outputDir, options);
+    } else {
+      if (buildNumber === undefined) {
+        throw new Error('buildNumber is required for artifact downloads');
+      }
+      return await this.downloadService.downloadAllArtifacts(jobName, buildNumber, outputDir);
+    }
   }
 
   /**
