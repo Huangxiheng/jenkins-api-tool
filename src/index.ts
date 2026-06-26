@@ -36,3 +36,7 @@ export {
 
 // Config
 export { loadConfig } from './config';
+
+// Compress service
+export { CompressService } from './services/bandzip-service';
+export type { ExtractResult, ExtractOptions, CompressResult, CompressOptions } from './services/bandzip-service';

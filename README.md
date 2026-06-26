@@ -19,16 +19,20 @@ cp .env.example .env
 编辑 `.env` 文件:
 
 ```env
-# 方式1: API Token 认证 (推荐)
-JENKINS_URL=http://your-jenkins-server:8080
-JENKINS_USERNAME=your_username
-JENKINS_API_TOKEN=your_api_token
-
-# 方式2: 用户名密码认证
+# 方式1: API Token 认证 (未验证)
 # JENKINS_URL=http://your-jenkins-server:8080
 # JENKINS_USERNAME=your_username
-# JENKINS_PASSWORD=your_password
+# JENKINS_API_TOKEN=your_api_token
+
+# 方式2: 用户名密码认证 (已验证)
+JENKINS_URL=http://your-jenkins-server:8080
+JENKINS_USERNAME=your_username
+JENKINS_PASSWORD=your_password
 ```
+
+编辑path环境变量:
+
+bandzip-service.ts封装了bandzip操作，如果使用compress-service.ts那么需要将bz.exe添加到Path路径
 
 ### 2. 使用 SDK
 
@@ -70,26 +74,26 @@ await client.downloadAll('my-job', status.buildNumber, './dist');
 
 初始化 Jenkins 客户端。
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| config.url | string | 是 | - | Jenkins 服务器地址 |
-| config.username | string | 是 | - | 用户名 |
-| config.password | string | 否* | - | 密码 (与 apiToken 二选一) |
-| config.apiToken | string | 否* | - | API Token (与 password 二选一) |
-| config.timeout | number | 否 | 30000 | 请求超时时间(ms) |
-| config.retries | number | 否 | 0 | 重试次数 |
-| config.retryDelay | number | 否 | 1000 | 重试延迟(ms) |
-| config.logLevel | string | 否 | 'info' | 日志级别 (debug/info/warn/error/silent) |
+| 参数                | 类型     | 必填  | 默认值    | 说明                                  |
+| ----------------- | ------ | --- | ------ | ----------------------------------- |
+| config.url        | string | 是   | -      | Jenkins 服务器地址                       |
+| config.username   | string | 是   | -      | 用户名                                 |
+| config.password   | string | 否\* | -      | 密码 (与 apiToken 二选一)                 |
+| config.apiToken   | string | 否\* | -      | API Token (与 password 二选一)          |
+| config.timeout    | number | 否   | 30000  | 请求超时时间(ms)                          |
+| config.retries    | number | 否   | 0      | 重试次数                                |
+| config.retryDelay | number | 否   | 1000   | 重试延迟(ms)                            |
+| config.logLevel   | string | 否   | 'info' | 日志级别 (debug/info/warn/error/silent) |
 
 #### build(jobName, params?, options?)
 
 触发 Jenkins 构建。
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| jobName | string | Job 名称 |
-| params | BuildParameters | 构建参数 (可选) |
-| options | BuildOptions | 构建选项 (可选) |
+| 参数      | 类型              | 说明        |
+| ------- | --------------- | --------- |
+| jobName | string          | Job 名称    |
+| params  | BuildParameters | 构建参数 (可选) |
+| options | BuildOptions    | 构建选项 (可选) |
 
 **BuildParameters**:
 
@@ -107,14 +111,15 @@ await client.downloadAll('my-job', status.buildNumber, './dist');
 
 **BuildOptions**:
 
-| 选项 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| wait | boolean | false | 是否等待构建完成 |
-| pollInterval | number | 5000 | 轮询间隔(ms) |
-| maxWaitTime | number | 600000 | 最大等待时间(ms) |
-| crumbIssuer | boolean | true | 是否启用 CSRF 保护 |
+| 选项           | 类型      | 默认值    | 说明           |
+| ------------ | ------- | ------ | ------------ |
+| wait         | boolean | false  | 是否等待构建完成     |
+| pollInterval | number  | 5000   | 轮询间隔(ms)     |
+| maxWaitTime  | number  | 600000 | 最大等待时间(ms)   |
+| crumbIssuer  | boolean | true   | 是否启用 CSRF 保护 |
 
 **返回值**:
+
 - 异步模式: `BuildTriggerResult` (queueId, url, jobName)
 - 同步模式: `BuildCompleteResult` (包含 buildNumber, status, duration, artifacts)
 
@@ -122,9 +127,9 @@ await client.downloadAll('my-job', status.buildNumber, './dist');
 
 查询构建状态。
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| jobName | string | Job 名称 |
+| 参数          | 类型               | 说明           |
+| ----------- | ---------------- | ------------ |
+| jobName     | string           | Job 名称       |
 | buildNumber | number \| 'last' | 构建编号或 'last' |
 
 **返回值**: `BuildStatusResult`
@@ -133,12 +138,12 @@ await client.downloadAll('my-job', status.buildNumber, './dist');
 
 下载单个构建产物。
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| jobName | string | Job 名称 |
-| buildNumber | number | 构建编号 |
+| 参数           | 类型     | 说明     |
+| ------------ | ------ | ------ |
+| jobName      | string | Job 名称 |
+| buildNumber  | number | 构建编号   |
 | artifactPath | string | 产物相对路径 |
-| outputDir | string | 本地输出目录 |
+| outputDir    | string | 本地输出目录 |
 
 **返回值**: `DownloadResult`
 
@@ -146,11 +151,11 @@ await client.downloadAll('my-job', status.buildNumber, './dist');
 
 下载所有构建产物。
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| jobName | string | Job 名称 |
-| buildNumber | number | 构建编号 |
-| outputDir | string | 本地输出目录 |
+| 参数          | 类型     | 说明     |
+| ----------- | ------ | ------ |
+| jobName     | string | Job 名称 |
+| buildNumber | number | 构建编号   |
+| outputDir   | string | 本地输出目录 |
 
 **返回值**: `DownloadAllResult`
 
@@ -158,10 +163,10 @@ await client.downloadAll('my-job', status.buildNumber, './dist');
 
 获取构建控制台日志。
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| jobName | string | Job 名称 |
-| buildNumber | number | 构建编号 |
+| 参数          | 类型     | 说明     |
+| ----------- | ------ | ------ |
+| jobName     | string | Job 名称 |
+| buildNumber | number | 构建编号   |
 
 **返回值**: `string` (日志内容)
 
@@ -169,7 +174,8 @@ await client.downloadAll('my-job', status.buildNumber, './dist');
 
 验证 Jenkins 连接和认证是否有效。
 
-**返回值**: 
+**返回值**:
+
 ```typescript
 {
   authenticated: boolean;  // 是否认证成功
@@ -179,19 +185,7 @@ await client.downloadAll('my-job', status.buildNumber, './dist');
 }
 ```
 
-## 示例
-
-运行示例代码:
-
-```bash
-npx ts-node examples/01-basic-build.ts
-npx ts-node examples/02-build-with-params.ts
-npx ts-node examples/03-build-and-wait.ts
-npx ts-node examples/04-check-status.ts
-npx ts-node examples/05-download-artifacts.ts
-npx ts-node examples/06-complete-flow.ts
-npx ts-node examples/07-verify-auth.ts
-```
+#
 
 ## 错误处理
 
