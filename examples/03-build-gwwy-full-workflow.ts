@@ -39,6 +39,9 @@ const UNIAPP_PROJECT_PATH = '/c/IDEA/project/uniapp/gwwy-uniapp';
 // 目标分支名称
 const TARGET_BRANCH = 'Feature_20260130_chongQingWenLvWei';
 
+// 中间切换分支（用于重置跟踪关系）
+const DEV_TEST_BRANCH = 'dev_test';
+
 // === 3. 配置路径常量 ===
 // Windows 格式路径（用于 Node.js fs 操作）
 const UNIAPP_PROJECT_PATH_WIN = 'C:\\IDEA\\project\\uniapp\\gwwy-uniapp';
@@ -93,38 +96,117 @@ async function runGitBashCommand(command: string, cwd?: string): Promise<string>
 
 /**
  * ============================================================
+ * 函数：获取当前分支的跟踪分支
+ * ============================================================
+ * 获取当前分支的 upstream（跟踪分支）信息
+ *
+ * @returns 跟踪分支名称（如 origin/feature-branch），如果没有则返回空字符串
+ */
+async function getUpstreamBranch(): Promise<string> {
+  try {
+    // 使用 git rev-parse 获取当前分支的跟踪分支
+    const upstream = (await runGitBashCommand(
+      `cd ${UNIAPP_PROJECT_PATH} && git rev-parse --abbrev-ref --symbolic-full-name @{u}`
+    )).trim();
+
+    return upstream || '';
+  } catch (error) {
+    // 如果没有设置跟踪分支，返回空字符串
+    return '';
+  }
+}
+
+/**
+ * ============================================================
  * 函数：检查并切换到目标分支
  * ============================================================
- * 这个函数会检查当前分支是否为目标分支，如果不是则切换。
+ * 这个函数会检查当前分支是否为目标分支，并验证跟踪分支是否正确。
+ * 如果不满足条件，会通过中间分支删除目标分支，然后从远程重新拉取并建立跟踪关系。
  * 切换失败会终止整个流程。
  */
 async function checkAndSwitchBranch(): Promise<void> {
   console.log('='.repeat(50));
   console.log('检查 Git 分支...');
-  
+
   // 获取当前分支名称
   const currentBranch = (await runGitBashCommand(`cd ${UNIAPP_PROJECT_PATH} && git branch --show-current`)).trim();
-  
+
   console.log(`[当前分支] ${currentBranch}`);
   console.log(`[目标分支] ${TARGET_BRANCH}`);
-  
+
+  // 期望的跟踪分支
+  const expectedUpstream = `origin/${TARGET_BRANCH}`;
+
+  // 判断是否需要重建分支
+  let needRebuild = false;
+
   // 检查是否已经是目标分支
   if (currentBranch === TARGET_BRANCH) {
-    console.log('[提示] 已经在目标分支上，无需切换');
+    console.log('[提示] 已经在目标分支上');
+
+    // 获取当前分支的跟踪分支
+    const upstream = await getUpstreamBranch();
+    console.log(`[当前跟踪分支] ${upstream || '未设置'}`);
+    console.log(`[期望跟踪分支] ${expectedUpstream}`);
+
+    // 检查跟踪分支是否正确
+    if (upstream === expectedUpstream) {
+      console.log('[提示] 分支状态正确，无需重建');
+      console.log('='.repeat(50));
+      return;
+    } else {
+      console.log('[提示] 跟踪分支不正确，需要重建分支');
+      needRebuild = true;
+    }
   } else {
-    console.log(`[提示] 正在切换到 ${TARGET_BRANCH} 分支...`);
-    
+    console.log(`[提示] 当前不在目标分支上，需要重建分支`);
+    needRebuild = true;
+  }
+
+  // 如果需要重建分支
+  if (needRebuild) {
     try {
-      // 尝试切换到目标分支
-      await runGitBashCommand(`cd ${UNIAPP_PROJECT_PATH} && git checkout ${TARGET_BRANCH}`);
-      console.log(`[成功] 已切换到 ${TARGET_BRANCH} 分支`);
+      console.log('\n[开始重建分支流程]');
+
+      // 步骤1：切换到中间分支
+      console.log(`\n[步骤1] 切换到中间分支 ${DEV_TEST_BRANCH}...`);
+      await runGitBashCommand(`cd ${UNIAPP_PROJECT_PATH} && git checkout ${DEV_TEST_BRANCH}`);
+      console.log(`[成功] 已切换到 ${DEV_TEST_BRANCH} 分支`);
+
+      // 步骤2：删除本地目标分支（如果存在）
+      console.log(`\n[步骤2] 删除本地 ${TARGET_BRANCH} 分支...`);
+      try {
+        await runGitBashCommand(`cd ${UNIAPP_PROJECT_PATH} && git branch -D ${TARGET_BRANCH}`);
+        console.log(`[成功] 已删除本地 ${TARGET_BRANCH} 分支`);
+      } catch (error) {
+        // 如果分支不存在，忽略错误
+        console.log(`[提示] 本地 ${TARGET_BRANCH} 分支不存在，跳过删除`);
+      }
+
+      // 步骤3：从远程同名的目标分支新建本地目标分支
+      console.log(`\n[步骤3] 从远程仓库 origin/${TARGET_BRANCH} 新建本地 ${TARGET_BRANCH} 分支...`);
+      await runGitBashCommand(`cd ${UNIAPP_PROJECT_PATH} && git checkout -b ${TARGET_BRANCH} origin/${TARGET_BRANCH}`);
+      console.log(`[成功] 已创建本地 ${TARGET_BRANCH} 分支并跟踪 origin/${TARGET_BRANCH}`);
+
+      // 步骤4：验证跟踪关系
+      console.log(`\n[步骤4] 验证跟踪关系...`);
+      const newUpstream = await getUpstreamBranch();
+      console.log(`[当前跟踪分支] ${newUpstream || '未设置'}`);
+      console.log(`[期望跟踪分支] ${expectedUpstream}`);
+
+      if (newUpstream === expectedUpstream) {
+        console.log('[成功] 分支重建完成，跟踪关系正确');
+      } else {
+        throw new Error(`分支重建失败，跟踪关系不正确: ${newUpstream}`);
+      }
+
     } catch (error) {
-      console.error(`[错误] 切换到 ${TARGET_BRANCH} 分支失败！`);
+      console.error(`\n[错误] 分支重建失败！`);
       console.error('整个流程已终止');
-      throw new Error(`无法切换到目标分支: ${TARGET_BRANCH}`);
+      throw new Error(`无法正确重建分支: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  
+
   console.log('='.repeat(50));
 }
 

@@ -16,7 +16,10 @@
   "scripts": {
     "dev": "tsx",
     "build": "tsup src/index.ts --format cjs,esm --dts",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "pty-pcx": "tsx ./examples/01-build-pty-pcx-full-workflow.ts",
+    "pcx": "tsx ./examples/02-build-pcx-full-workflow.ts",
+    "gwwy": "tsx ./examples/03-build-gwwy-full-workflow.ts"
   },
   "keywords": [
     "jenkins",
