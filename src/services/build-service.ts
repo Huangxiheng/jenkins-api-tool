@@ -65,12 +65,17 @@ export class BuildService {
   async waitForCompletion(
     jobName: string,
     queueId: number,
-    options: { pollInterval: number; maxWaitTime: number }
+    options: { pollInterval: number; maxWaitTime: number; retryOnTimeout?: number }
   ): Promise<BuildCompleteResult> {
     const startTime = Date.now();
-    const { pollInterval, maxWaitTime } = options;
+    const { pollInterval, maxWaitTime, retryOnTimeout = 3 } = options;
+    let timeoutRetryCount = 0;  // 全局超时重试计数器
 
-    this.logger.info(`Waiting for build to complete (poll interval: ${pollInterval}ms, max wait: ${formatDuration(maxWaitTime)})`);
+    this.logger.info(
+      `Waiting for build to complete ` +
+      `(poll interval: ${pollInterval}ms, max wait: ${formatDuration(maxWaitTime)}, ` +
+      `retry on timeout: ${retryOnTimeout})`
+    );
 
     // Step 1: Poll queue until executable is available
     let buildNumber: number | null = null;
@@ -80,13 +85,28 @@ export class BuildService {
       }
 
       this.logger.debug(`Checking queue item ${queueId}...`);
-      const queueInfo = await this.statusService.getBuildNumberFromQueue(queueId);
 
-      if (queueInfo && queueInfo.buildNumber) {
-        buildNumber = queueInfo.buildNumber;
-        this.logger.info(`Build started: #${buildNumber}`);
-      } else {
-        await this.sleep(pollInterval);
+      try {
+        const queueInfo = await this.statusService.getBuildNumberFromQueue(queueId);
+
+        if (queueInfo && queueInfo.buildNumber) {
+          buildNumber = queueInfo.buildNumber;
+          this.logger.info(`Build started: #${buildNumber}`);
+        } else {
+          await this.sleep(pollInterval);
+        }
+      } catch (error: any) {
+        // 处理超时重试
+        if (this.isTimeoutError(error) && timeoutRetryCount < retryOnTimeout) {
+          timeoutRetryCount++;
+          this.logger.warn(
+            `Network timeout in queue polling (attempt ${timeoutRetryCount}/${retryOnTimeout}), ` +
+            `retrying in ${pollInterval}ms...`
+          );
+          await this.sleep(pollInterval);
+          continue;
+        }
+        throw error;
       }
     }
 
@@ -96,32 +116,46 @@ export class BuildService {
         throw new TimeoutError(`Build timed out after ${formatDuration(maxWaitTime)}`);
       }
 
-      const status = await this.statusService.getStatus(jobName, buildNumber);
+      try {
+        const status = await this.statusService.getStatus(jobName, buildNumber);
 
-      if (!status.building && status.status !== 'IN_PROGRESS') {
-        this.logger.info(`Build completed: ${status.status} (${formatDuration(status.duration)})`);
+        if (!status.building && status.status !== 'IN_PROGRESS') {
+          this.logger.info(`Build completed: ${status.status} (${formatDuration(status.duration)})`);
 
-        if (status.status === 'FAILURE') {
-          throw new BuildFailedError(`Build #${buildNumber} failed`, buildNumber);
+          if (status.status === 'FAILURE') {
+            throw new BuildFailedError(`Build #${buildNumber} failed`, buildNumber);
+          }
+
+          if (status.status === 'ABORTED') {
+            throw new BuildFailedError(`Build #${buildNumber} was aborted`, buildNumber);
+          }
+
+          return {
+            queueId,
+            url: status.url,
+            jobName,
+            buildNumber: status.buildNumber,
+            status: status.status,
+            duration: status.duration,
+            artifacts: status.artifacts,
+          };
         }
 
-        if (status.status === 'ABORTED') {
-          throw new BuildFailedError(`Build #${buildNumber} was aborted`, buildNumber);
+        this.logger.debug(`Build #${buildNumber} still in progress...`);
+        await this.sleep(pollInterval);
+      } catch (error: any) {
+        // 处理超时重试
+        if (this.isTimeoutError(error) && timeoutRetryCount < retryOnTimeout) {
+          timeoutRetryCount++;
+          this.logger.warn(
+            `Network timeout in status polling (attempt ${timeoutRetryCount}/${retryOnTimeout}), ` +
+            `retrying in ${pollInterval}ms...`
+          );
+          await this.sleep(pollInterval);
+          continue;
         }
-
-        return {
-          queueId,
-          url: status.url,
-          jobName,
-          buildNumber: status.buildNumber,
-          status: status.status,
-          duration: status.duration,
-          artifacts: status.artifacts,
-        };
+        throw error;
       }
-
-      this.logger.debug(`Build #${buildNumber} still in progress...`);
-      await this.sleep(pollInterval);
     }
   }
 
@@ -252,5 +286,20 @@ export class BuildService {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * 判断错误是否为超时错误（可重试）
+   * @param error - 捕获的错误对象
+   * @returns 是否为超时错误
+   */
+  private isTimeoutError(error: any): boolean {
+    // 检查错误码
+    if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+      return true;
+    }
+    // 检查错误消息（兼容不同错误来源）
+    const message = error.message?.toLowerCase() || '';
+    return message.includes('etimedout') || message.includes('econnaborted');
   }
 }

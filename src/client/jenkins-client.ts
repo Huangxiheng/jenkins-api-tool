@@ -51,6 +51,7 @@ export class JenkinsClient {
       pollInterval: options?.pollInterval || 5000,
       maxWaitTime: options?.maxWaitTime || 600000,
       crumbIssuer: options?.crumbIssuer !== false,
+      retryOnTimeout: options?.retryOnTimeout ?? 3,
     };
 
     // Step 1: Trigger the build
@@ -64,6 +65,7 @@ export class JenkinsClient {
         {
           pollInterval: buildOptions.pollInterval,
           maxWaitTime: buildOptions.maxWaitTime,
+          retryOnTimeout: buildOptions.retryOnTimeout,
         }
       );
     }

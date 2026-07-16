@@ -53,6 +53,12 @@ export interface BuildOptions {
   maxWaitTime?: number;
   /** 是否启用 CSRF 保护, 默认 true */
   crumbIssuer?: boolean;
+  /**
+   * waitForCompletion 网络超时重试次数
+   * 当轮询过程中遇到 ETIMEDOUT/ECONNABORTED 错误时自动重试
+   * @default 3
+   */
+  retryOnTimeout?: number;
 }
 
 /**
